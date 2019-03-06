@@ -1,0 +1,17 @@
+<?xml version='1.0'?>
+<launch>
+	<node pkg="dynamixel_group_interface" type="manager_node" name="servos"
+		ns="/robot" clear_params="true" output="screen">
+		<param name="port_name" value="/dev/ttyUSB0" type="str" />
+		<param name="port_baud" value="3000000" type="int" />
+		<param name="protocol" value="2.0" type="double" />
+
+		<param name="frame_id" value="mantis" type="str" />
+		<param name="update_rate" value="25.0" type="double" />
+
+		<remap from="~/joint_states" to="state/joints" />
+		<remap from="~/joint_setpoints" to="command/joints" />
+
+		<rosparam command="load" file="$(find dynamixel_group_interface)/config/servos.yaml"/>
+	</node>
+</launch>
