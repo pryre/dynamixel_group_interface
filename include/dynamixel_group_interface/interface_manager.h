@@ -102,6 +102,9 @@ class InterfaceManager {
 		double motor_value_to_current_;
 		int motor_indirect_addr_;
 		int motor_indirect_len_;
+		double motor_current_torque_m_;
+		double motor_current_torque_c_;
+		double motor_current_torque_cutoff_;
 
 	public:
 		InterfaceManager( void );
@@ -138,6 +141,7 @@ class InterfaceManager {
 		void doSyncWrite(dynamixel_control_items_t item_id, std::vector<double>* ref);
 
 		//Conversion
+		double estimate_torque_from_current( double current );
 		int convert_current_value(double current, int motor_number);
 		double convert_value_current(int value, int motor_number);
 		int convert_velocity_value(double velocity, int motor_number);	//rad/s to value rpm

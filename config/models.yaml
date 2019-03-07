@@ -2,6 +2,11 @@
 # Value to velocity should give rad/s or m/s
 # Value to current should give Amps
 
+# The current_torque_curve is the linear
+# approximation (y = mx + c) of the performance graph,
+# where "cut" is the lower current cutoff
+
+
 models:
   XM430-W350:
     //Position unit: 0.088 Deg
@@ -13,3 +18,7 @@ models:
     indirect_address_1:
       addr: 168
       len: 2
+    current_torque_curve:
+      m: 0.525
+      c: -0.175
+	  cut: 0.1

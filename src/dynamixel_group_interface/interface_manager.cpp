@@ -29,6 +29,9 @@ InterfaceManager::InterfaceManager()
 	, motor_value_to_current_(0.0)
 	, motor_indirect_addr_(0)
 	, motor_indirect_len_(0)
+	, motor_current_torque_m_(0.0)
+	, motor_current_torque_c_(0.0)
+	, motor_current_torque_cutoff_(0.0)
 	, param_frame_id_( "robot" )
 	, motor_ref_last_( InterfaceJoint::CurrentReference::Unset ) {
 
@@ -46,7 +49,10 @@ InterfaceManager::InterfaceManager()
 					nhp_.hasParam("models/" + motor_model_ + "/value_to_velocity") &&
 					nhp_.hasParam("models/" + motor_model_ + "/value_to_current") &&
 					nhp_.hasParam("models/" + motor_model_ + "/indirect_address_1/addr") &&
-					nhp_.hasParam("models/" + motor_model_ + "/indirect_address_1/len"),
+					nhp_.hasParam("models/" + motor_model_ + "/indirect_address_1/len") &&
+					nhp_.hasParam("models/" + motor_model_ + "/current_torque_curve/m") &&
+					nhp_.hasParam("models/" + motor_model_ + "/current_torque_curve/c") &&
+					nhp_.hasParam("models/" + motor_model_ + "/current_torque_curve/cutoff"),
 					"Could not find all model parameters for '%s'", motor_model_.c_str());
 
 	nhp_.getParam("models/" + motor_model_ + "/value_to_position", motor_value_to_position_);
@@ -54,6 +60,9 @@ InterfaceManager::InterfaceManager()
 	nhp_.getParam("models/" + motor_model_ + "/value_to_current", motor_value_to_current_);
 	nhp_.getParam("models/" + motor_model_ + "/indirect_address_1/addr", motor_indirect_addr_);
 	nhp_.getParam("models/" + motor_model_ + "/indirect_address_1/len", motor_indirect_len_);
+	nhp_.getParam("models/" + motor_model_ + "/current_torque_curve/m", motor_current_torque_m_);
+	nhp_.getParam("models/" + motor_model_ + "/current_torque_curve/c", motor_current_torque_c_);
+	nhp_.getParam("models/" + motor_model_ + "/current_torque_curve/cutoff", motor_current_torque_cutoff_);
 
 	// sub_setpoints_ = nh_.subscribe<sensor_msgs::JointState>( "joint_setpoints",
 	// 10, &InterfaceManager::callback_setpoints, this );
@@ -322,10 +331,10 @@ void InterfaceManager::callback_timer( const ros::TimerEvent& e ) {
 		joint_states.name = dxl_names_;
 
 		for ( int i = 0; i < dxl_.size(); i++ ) {
-			// joint_states.name.push_back("motor_" + std::to_string(i));
 			joint_states.position.push_back( convert_value_radian( states[i][1], i ) );
 			joint_states.velocity.push_back( convert_value_velocity( states[i][2], i ) );
-			//joint_states.effort.push_back( convert_value_torque( states[i][3], i ) );
+			joint_states.effort.push_back(  estimate_torque_from_current (
+											convert_value_current( states[i][3], i ) ) );
 
 			/*
       if(states[i][0] && (motor_output_mode != MOTOR_MODE_INVALID)) {

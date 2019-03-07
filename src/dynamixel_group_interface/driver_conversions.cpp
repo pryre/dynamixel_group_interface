@@ -2,6 +2,13 @@
 
 namespace DynamixelGroupInterface {
 
+//Rough estimate of applied torque from current curve
+double InterfaceManager::estimate_torque_from_current( double current ) {
+	double torque = (motor_current_torque_m_*current) + motor_current_torque_c_;
+
+	return ( torque > motor_current_torque_cutoff_ ) ? torque : 0.0;
+}
+
 int InterfaceManager::convert_current_value( double current, int motor_number ) {
 	return current / motor_value_to_current_;
 }
