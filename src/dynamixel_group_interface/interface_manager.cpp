@@ -14,13 +14,6 @@
 
 namespace DynamixelGroupInterface {
 
-static const std::string dynamixel_control_items_names[DCI_NUM_ITEMS]{
-	"Torque_Enable", "Operating_Mode", "Profile_Velocity",
-	"Profile_Acceleration", "Present_Position", "Present_Velocity",
-	"Present_Current", "Goal_Position", "Goal_Velocity",
-	"Goal_Current"
-};
-
 InterfaceManager::InterfaceManager()
 	: nh_( "~" )
 	, nhp_( "~" )
@@ -31,6 +24,9 @@ InterfaceManager::InterfaceManager()
 	, param_port_buad_( 57600 )
 	, param_port_version_( 0.0 )
 	, param_num_motors_( 0 )
+	, value_to_position_ratio_(0.0)
+	, value_to_velocity_ratio_(0.0)
+	, value_to_current_ratio_(0.0)
 	, param_frame_id_( "robot" )
 	, motor_ref_last_( InterfaceJoint::CurrentReference::Unset ) {
 
@@ -217,9 +213,9 @@ bool InterfaceManager::add_motors() {
 		if ( i == 0 ) {
 			for ( int j = 0; j < DCI_NUM_ITEMS; j++ ) {
 				dynamixel_control_items_.push_back(
-					*dxl_[0].getControlItem( dynamixel_control_items_names[j].c_str() ) );
+					*dxl_[0].getControlItem( DYNAMIXEL_CONTROL_ITEMS_STRING[j].c_str() ) );
 				ROS_DEBUG( "Loaded ControlTableItem \"%s\": %i; %i",
-					dynamixel_control_items_names[j].c_str(),
+					DYNAMIXEL_CONTROL_ITEMS_STRING[j].c_str(),
 					dynamixel_control_items_[j].address,
 					dynamixel_control_items_[j].data_length );
 			}
@@ -256,15 +252,10 @@ bool InterfaceManager::add_motors() {
 }
 
 void InterfaceManager::callback_timer( const ros::TimerEvent& e ) {
-	// TODO:
-	//	Read in new states
-	//	Send out current goals
-
 	sensor_msgs::JointState joint_states;
 
 	joint_states.header.stamp = e.current_real;
 	joint_states.header.frame_id = param_frame_id_;
-	;
 
 	joint_states.position.clear();
 	joint_states.velocity.clear();

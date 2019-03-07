@@ -15,6 +15,11 @@
 #include <math.h>
 #include <vector>
 
+//TODO:
+//	- Load in servo parameters based on [motor/name] parameter
+//	- Make parameter for profile settings in each motor
+//	- Load motor paramters dynamically without "motor_num"
+
 namespace DynamixelGroupInterface {
 
 enum dynamixel_mode_t {
@@ -37,6 +42,20 @@ enum dynamixel_control_items_t {
 	DCI_GOAL_CURRENT,
 	DCI_NUM_ITEMS
 };
+
+static const std::string DYNAMIXEL_CONTROL_ITEMS_STRING[DCI_NUM_ITEMS]{
+	"Torque_Enable",
+	"Operating_Mode",
+	"Profile_Velocity",
+	"Profile_Acceleration",
+	"Present_Position",
+	"Present_Velocity",
+	"Present_Current",
+	"Goal_Position",
+	"Goal_Velocity",
+	"Goal_Current"
+};
+
 
 class InterfaceManager {
 	private:
@@ -80,6 +99,11 @@ class InterfaceManager {
 
 		//dynamixel_write_value_t *dynamixel_write_value_;
 		//dynamixel_motor_pos_t *dynamixel_motor_pos_;
+
+		//Motor group settings
+		double value_to_position_ratio_;
+		double value_to_velocity_ratio_;
+		double value_to_current_ratio_;
 
 	public:
 		InterfaceManager( void );

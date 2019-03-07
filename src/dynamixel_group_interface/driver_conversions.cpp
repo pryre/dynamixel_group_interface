@@ -6,11 +6,11 @@ namespace DynamixelGroupInterface {
 //Velocity unit: 0.229 RPM
 //Position unit: 0.088 Deg
 
-//XXX: Hardcoded for XM430-W350
-const double velocity_to_value_ratio = 1.0 / ( 0.229 * 2.0 * M_PI / 60.0 );
-const double position_to_value_ratio = 1.0 / ( 0.088 * M_PI / 180.0 );
-/*(3.14×2)÷60
+//Hardcoded for XM430-W350
+//const double velocity_to_value_ratio = 1.0 / ( 0.229 * 2.0 * M_PI / 60.0 );
+//const double position_to_value_ratio = 1.0 / ( 0.088 * M_PI / 180.0 );
 
+/*
 int InterfaceManager::convert_effort_value( double effort, int motor_number ) {
 	return (int)( torque * dxl_[motor_number].getTorqueToCurrentValueRatio() );
 }
@@ -19,13 +19,14 @@ double InterfaceManager::convert_value_effort( int value, int motor_number ) {
 	return (double)value / dxl_[motor_number].getTorqueToCurrentValueRatio();
 }
 */
+
 int InterfaceManager::convert_velocity_value( double velocity,
 	int motor_number ) {
-	return velocity * velocity_to_value_ratio;
+	return velocity / value_to_velocity_ratio_;
 }
 
 double InterfaceManager::convert_value_velocity( int value, int motor_number ) {
-	return (double)value / velocity_to_value_ratio;
+	return (double)value * value_to_velocity_ratio_;
 }
 
 int InterfaceManager::convert_radian_value( double radian, int motor_number ) {
@@ -50,7 +51,7 @@ int InterfaceManager::convert_radian_value( double radian, int motor_number ) {
 }
 
 double InterfaceManager::convert_value_radian( int value, int motor_number ) {
-	double radian = (double)value / position_to_value_ratio;
+	double radian = (double)value * value_to_position_ratio_;
 
 	// Constrain angle from -M_PI to +M_PI
 	radian = fmod( radian, 2 * M_PI );

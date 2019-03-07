@@ -1,0 +1,9 @@
+# Value to position should give rad or m
+# Value to velocity should give rad/s or m/s
+# Value to current should give Amps
+
+servos:
+  XM430-W350:
+    value_to_position: 0.00153589
+    value_to_velocity: 0.023980824
+    value_to_current: 0.00269
