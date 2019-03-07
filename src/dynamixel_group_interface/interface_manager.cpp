@@ -15,7 +15,7 @@
 namespace DynamixelGroupInterface {
 
 InterfaceManager::InterfaceManager()
-	: nh_( "~" )
+	: nh_()
 	, nhp_( "~" )
 	,
 	// motor_output_mode_(MOTOR_MODE_INVALID),
@@ -23,20 +23,37 @@ InterfaceManager::InterfaceManager()
 	, param_port_name_( "/dev/ttyUSB0" )
 	, param_port_buad_( 57600 )
 	, param_port_version_( 0.0 )
-	, param_num_motors_( 0 )
-	, value_to_position_ratio_(0.0)
-	, value_to_velocity_ratio_(0.0)
-	, value_to_current_ratio_(0.0)
+	, motor_model_("")
+	, motor_value_to_position_(0.0)
+	, motor_value_to_velocity_(0.0)
+	, motor_value_to_current_(0.0)
+	, motor_indirect_addr_(0)
+	, motor_indirect_len_(0)
 	, param_frame_id_( "robot" )
 	, motor_ref_last_( InterfaceJoint::CurrentReference::Unset ) {
 
-	// ROS Setup
+	// ROS setup
 	nhp_.param( "port_name", param_port_name_, param_port_name_ );
 	nhp_.param( "port_baud", param_port_buad_, param_port_buad_ );
 	nhp_.param( "protocol", param_port_version_, param_port_version_ );
-	nhp_.param( "num_motors", param_num_motors_, param_num_motors_ );
 	nhp_.param( "frame_id", param_frame_id_, param_frame_id_ );
 	nhp_.param( "update_rate", param_update_rate_, param_update_rate_ );
+
+	// Motor model setup
+	nhp_.param( "group/model", motor_model_, motor_model_ );
+
+	ROS_ASSERT_MSG( nhp_.hasParam("models/" + motor_model_ + "/value_to_position") &&
+					nhp_.hasParam("models/" + motor_model_ + "/value_to_velocity") &&
+					nhp_.hasParam("models/" + motor_model_ + "/value_to_current") &&
+					nhp_.hasParam("models/" + motor_model_ + "/indirect_address_1/addr") &&
+					nhp_.hasParam("models/" + motor_model_ + "/indirect_address_1/len"),
+					"Could not find all model parameters for '%s'", motor_model_.c_str());
+
+	nhp_.getParam("models/" + motor_model_ + "/value_to_position", motor_value_to_position_);
+	nhp_.getParam("models/" + motor_model_ + "/value_to_velocity", motor_value_to_velocity_);
+	nhp_.getParam("models/" + motor_model_ + "/value_to_current", motor_value_to_current_);
+	nhp_.getParam("models/" + motor_model_ + "/indirect_address_1/addr", motor_indirect_addr_);
+	nhp_.getParam("models/" + motor_model_ + "/indirect_address_1/len", motor_indirect_len_);
 
 	// sub_setpoints_ = nh_.subscribe<sensor_msgs::JointState>( "joint_setpoints",
 	// 10, &InterfaceManager::callback_setpoints, this );
@@ -49,17 +66,17 @@ InterfaceManager::InterfaceManager()
 	bool port_ok = false;
 
 	/*
-  ROS_WARN("START TOOL TEST");
-  DynamixelTool tool;
-  tool.addTool("XM430-W350", 3);
-  ROS_INFO("id: %d, mdl: %d, cnt: %d", tool.dxl_info_[tool.dxl_info_cnt_-1].id,
-  tool.dxl_info_[tool.dxl_info_cnt_-1].model_num, tool.dxl_info_cnt_);
-  ControlTableItem* item = tool.getControlItem("Torque_Enable");
-  ROS_INFO("addr: %d, len: %d", item->address, item->data_length);
-  ROS_WARN("END TOOL TEST");
+	ROS_WARN("START TOOL TEST");
+	DynamixelTool tool;
+	tool.addTool("XM430-W350", 3);
+	ROS_INFO("id: %d, mdl: %d, cnt: %d", tool.dxl_info_[tool.dxl_info_cnt_-1].id,
+	tool.dxl_info_[tool.dxl_info_cnt_-1].model_num, tool.dxl_info_cnt_);
+	ControlTableItem* item = tool.getControlItem("Torque_Enable");
+	ROS_INFO("addr: %d, len: %d", item->address, item->data_length);
+	ROS_WARN("END TOOL TEST");
 
-  shutdown_node();
-  */
+	shutdown_node();
+	*/
 
 	// Open port
 	if ( portHandler_->openPort() ) {
@@ -113,6 +130,16 @@ uint8_t InterfaceManager::get_id( int motor_number ) {
 	return *(dxl_[motor_number].getID()); //dxl_[motor_number].dxl_info_[dxl_[motor_number].dxl_info_cnt_ - 1].id;
 }
 
+void InterfaceManager::clean_joint_interfaces( void ) {
+	// Delete the created joint interfaces
+	for ( int i = 0; i < joint_interfaces_.size(); i++ ) {
+		delete joint_interfaces_[i];
+	}
+
+	//Clear the vector entries
+	joint_interfaces_.clear();
+}
+
 void InterfaceManager::shutdown_node( void ) {
 	ROS_ERROR( "Shutting down dynamixel interface" );
 
@@ -122,10 +149,7 @@ void InterfaceManager::shutdown_node( void ) {
 
 	portHandler_->closePort();
 
-	// Clear the created joint interfaces
-	for ( int i = 0; i < joint_interfaces_.size(); i++ ) {
-		delete joint_interfaces_[i];
-	}
+	clean_joint_interfaces();
 
 	ros::shutdown();
 }
@@ -182,69 +206,97 @@ bool InterfaceManager::enable_torque_all( std_srvs::SetBool::Request& req,
 	return true;
 }
 
-void InterfaceManager::init_motor( std::string motor_model, uint8_t motor_id,
-	double protocol_version,
-	std::string motor_name ) {
+void InterfaceManager::init_motor( uint8_t motor_id,
+								   double protocol_version,
+								   std::string motor_name ) {
 	DynamixelTool tool;
 	dxl_.push_back( tool );
-	dxl_.back().addTool( motor_model.c_str(), motor_id );
+	dxl_.back().addTool( motor_model_.c_str(), motor_id );
 	dxl_names_.push_back( motor_name );
 }
 
 bool InterfaceManager::add_motors() {
+	//Will fail the motor setup if something goes wrong at any point
 	bool success = true;
 
-	joint_interfaces_.resize( param_num_motors_ );
+	// Make sure we start fresh
+	clean_joint_interfaces();
 
-	for ( int i = 0; i < param_num_motors_; i++ ) {
+	//Start looping through motors definitions
+	int i = 0;
+	while ( nhp_.hasParam( "group/motor_" + std::to_string( i ) + "/id" ) &&
+			nhp_.hasParam( "group/motor_" + std::to_string( i ) + "/name" ) &&
+			nhp_.hasParam( "group/motor_" + std::to_string( i ) + "/ref_timeout" ) &&
+			nhp_.hasParam( "group/motor_" + std::to_string( i ) + "/profile/acceleration" ) &&
+			nhp_.hasParam( "group/motor_" + std::to_string( i ) + "/profile/velocity" ) ) {
+
 		std::string motor_name;
 		std::string motor_model;
 		int motor_id;
 		double protocol_version;
-		nh_.getParam( "motors/motor_" + std::to_string( i ) + "/name", motor_name );
-		nh_.getParam( "motors/motor_" + std::to_string( i ) + "/model", motor_model );
-		nh_.getParam( "motors/motor_" + std::to_string( i ) + "/id", motor_id );
+		nhp_.getParam( "group/motor_" + std::to_string( i ) + "/name", motor_name );
+		nhp_.getParam( "group/motor_" + std::to_string( i ) + "/id", motor_id );
 		protocol_version = param_port_version_;
 
 		ROS_INFO( "Initializing motor #%i", i );
-		init_motor( motor_model, (uint8_t)motor_id, protocol_version, motor_name );
+		init_motor( (uint8_t)motor_id, protocol_version, motor_name );
 
-		// XXX: This is a pretty bad hack for this
+		// XXX: This is a pretty bad hack for this, but is unavoidable.
+		//		We have to build the control table somehow, and all motors
+		//		should be the same, so just load in the control items
+		//		for motor #1. Really we would want a 2D motor, but that just
+		//		doesn't work if we want to use GroupSync
 		if ( i == 0 ) {
 			for ( int j = 0; j < DCI_NUM_ITEMS; j++ ) {
 				dynamixel_control_items_.push_back(
 					*dxl_[0].getControlItem( DYNAMIXEL_CONTROL_ITEMS_STRING[j].c_str() ) );
+
 				ROS_DEBUG( "Loaded ControlTableItem \"%s\": %i; %i",
 					DYNAMIXEL_CONTROL_ITEMS_STRING[j].c_str(),
 					dynamixel_control_items_[j].address,
 					dynamixel_control_items_[j].data_length );
 			}
 		}
-		// XXX: This is a pretty bad hack for this
 
 		ROS_INFO( "Contacting motor #%i", i );
 		int64_t tmp_val;
 
-		// if( readMotorState("Torque_Enable", i, &tmp_val) ) {
 		if ( readMotorState( DCI_TORQUE_ENABLE, i, &tmp_val ) ) {
 			set_torque_enable( i, false ); // Make sure motor is not turned on
 			ROS_INFO( "Motor %i successfully added", i );
 
 			// Add in a new joint interface
 			double ref_timeout;
-			nh_.getParam( "motors/motor_" + std::to_string( i ) + "/ref_timeout",
-				ref_timeout );
-			joint_interfaces_[i] = new InterfaceJoint( nhp_, motor_name, ref_timeout );
+			nhp_.getParam( "group/motor_" + std::to_string( i ) + "/ref_timeout", ref_timeout );
+			joint_interfaces_.push_back( new InterfaceJoint( nh_, motor_name, ref_timeout ) );
+
+			//Set movement profile data
+			double profile_accel;
+			double profile_vel;
+			nhp_.getParam( "group/motor_" + std::to_string( i ) + "/profile/acceleration", profile_accel );
+			nhp_.getParam( "group/motor_" + std::to_string( i ) + "/profile/velocity", profile_vel );
+			writeMotorState( DCI_PROFILE_ACCELERATION, i, profile_accel );
+			writeMotorState( DCI_PROFILE_VELOCITY, i, profile_vel );
+			ROS_INFO( "Motor %i successfully movement profile set", i );
 		} else {
 			ROS_ERROR( "Motor %i could not be read!", i );
 			success = false;
 		}
+
+		i++;
+	}
+
+	//Fail if no motors are found
+	if( i == 0 ) {
+		ROS_ERROR( "No motor definitions found in group!" );
+		success = false;
 	}
 
 	ROS_ASSERT_MSG( dxl_.size() == joint_interfaces_.size(),
 		"Motor and interface number does not match (%i!=%i)",
 		(int)dxl_.size(), (int)joint_interfaces_.size() );
-	ROS_ASSERT_MSG( dxl_.size() == joint_interfaces_.size(),
+
+	ROS_ASSERT_MSG( dxl_.size() == dxl_names_.size(),
 		"Motor and name number does not match (%i!=%i)",
 		(int)dxl_.size(), (int)dxl_names_.size() );
 
@@ -364,8 +416,8 @@ void InterfaceManager::callback_timer( const ros::TimerEvent& e ) {
 					set_torque_enable( i, false );
 					writeMotorState( DCI_OPERATING_MODE, i, MOTOR_MODE_VELOCITY );
 
-					ROS_WARN( "--- HACK TO SET MOVEMENT PROFILE ---" );
-					writeMotorState( DCI_PROFILE_ACCELERATION, i, 50 );
+					//ROS_WARN( "--- HACK TO SET MOVEMENT PROFILE ---" );
+					//writeMotorState( DCI_PROFILE_ACCELERATION, i, 50 );
 				}
 			}
 
@@ -377,9 +429,9 @@ void InterfaceManager::callback_timer( const ros::TimerEvent& e ) {
 					set_torque_enable( i, false );
 					writeMotorState( DCI_OPERATING_MODE, i, MOTOR_MODE_POSITION );
 
-					ROS_WARN( "--- HACK TO SET MOVEMENT PROFILE ---" );
-					writeMotorState( DCI_PROFILE_ACCELERATION, i, 50 );
-					writeMotorState( DCI_PROFILE_VELOCITY, i, 50 );
+					//ROS_WARN( "--- HACK TO SET MOVEMENT PROFILE ---" );
+					//writeMotorState( DCI_PROFILE_ACCELERATION, i, 50 );
+					//writeMotorState( DCI_PROFILE_VELOCITY, i, 50 );
 				}
 			}
 

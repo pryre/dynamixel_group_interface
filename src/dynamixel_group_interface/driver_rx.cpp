@@ -58,12 +58,9 @@ bool InterfaceManager::readDynamixelRegister( uint8_t id, uint16_t addr,
 
 void InterfaceManager::initSyncRead() {
 	for ( int i = 0; i < dxl_.size(); i++ ) {
-		// dynamixel_[i].item_ = dynamixel_[i].ctrl_table_["indirect_address"];
-
 		uint8_t id = get_id( i );
-		// uint16_t addr = dynamixel_[i].item_->address;
-		uint16_t addr = 168; // XXX: XM430-W350 indirect_address_1
-		uint8_t length = 2;
+		uint16_t addr = motor_indirect_addr_;
+		uint8_t length = motor_indirect_len_;
 
 		ControlItem item;
 		item = dynamixel_control_items_[DCI_TORQUE_ENABLE];

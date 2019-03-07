@@ -15,11 +15,6 @@
 #include <math.h>
 #include <vector>
 
-//TODO:
-//	- Load in servo parameters based on [motor/name] parameter
-//	- Make parameter for profile settings in each motor
-//	- Load motor paramters dynamically without "motor_num"
-
 namespace DynamixelGroupInterface {
 
 enum dynamixel_mode_t {
@@ -101,9 +96,12 @@ class InterfaceManager {
 		//dynamixel_motor_pos_t *dynamixel_motor_pos_;
 
 		//Motor group settings
-		double value_to_position_ratio_;
-		double value_to_velocity_ratio_;
-		double value_to_current_ratio_;
+		std::string motor_model_;
+		double motor_value_to_position_;
+		double motor_value_to_velocity_;
+		double motor_value_to_current_;
+		int motor_indirect_addr_;
+		int motor_indirect_len_;
 
 	public:
 		InterfaceManager( void );
@@ -120,32 +118,28 @@ class InterfaceManager {
 		//Interfacing
 		bool load_dynamixel();
 		bool check_load_dynamixel();
+		void clean_joint_interfaces( void );
 		void shutdown_node( void );
 		uint8_t get_id( int motor_number );
-		void init_motor(std::string motor_model, uint8_t motor_id, double protocol_version, std::string motor_name);
+		void init_motor( uint8_t motor_id, double protocol_version, std::string motor_name);
 		bool add_motors();
 
 		//Control
 		bool set_torque_enable(int motor_number, bool onoff);
 
-		//bool readMotorState(std::string addr_name, int motor_number, int64_t *read_value);
 		bool readMotorState(dynamixel_control_items_t item_id, int motor_number, int64_t *read_value);
 		bool readDynamixelRegister(uint8_t id, uint16_t addr, uint8_t length, int64_t *value);
 
-		//bool writeMotorState(std::string addr_name, int motor_number, uint32_t write_value);
 		bool writeMotorState(dynamixel_control_items_t item_id, int motor_number, uint32_t write_value);
 		bool writeDynamixelRegister(uint8_t id, uint16_t addr, uint8_t length, uint32_t value);
 
 		void initSyncRead();
 		bool doSyncRead(std::vector<std::vector<std::int32_t>> *states);
-		//void doSyncWrite(std::string addr_name);
 		void doSyncWrite(dynamixel_control_items_t item_id, std::vector<double>* ref);
 
-		//bool bulk_read_states(std::vector<std::string> *states, std::vector<std::vector<int32_t>> *result);
-
 		//Conversion
-		//int convert_torque_value(double torque, int motor_number);
-		//double convert_value_torque(int value, int motor_number);
+		int convert_current_value(double current, int motor_number);
+		double convert_value_current(int value, int motor_number);
 		int convert_velocity_value(double velocity, int motor_number);	//rad/s to value rpm
 		double convert_value_velocity(int value, int motor_number);	//Reading to rad/s
 		int32_t convert_radian_value(double radian, int motor_number);

@@ -9,13 +9,12 @@
 		<param name="frame_id" value="mantis" type="str" />
 		<param name="update_rate" value="25.0" type="double" />
 
-		<remap from="~/joint_states" to="state/joints" />
-		<remap from="~/joint_setpoints" to="command/joints" />
+		<!--remap from="~joint_states" to="state/joints" /-->
 
 		<!-- Load motor group definition -->
 		<rosparam command="load" file="$(find dynamixel_group_interface)/config/group.yaml"/>
 
 		<!-- Load motor model definitions -->
-		<rosparam command="load" file="$(find dynamixel_group_interface)/config/motor_models/XM430-W350.yaml"/>
+		<rosparam command="load" file="$(find dynamixel_group_interface)/config/models.yaml"/>
 	</node>
 </launch>

@@ -2,8 +2,14 @@
 # Value to velocity should give rad/s or m/s
 # Value to current should give Amps
 
-servos:
+models:
   XM430-W350:
+    //Position unit: 0.088 Deg
     value_to_position: 0.00153589
+    //Velocity unit: 0.229 RPM
     value_to_velocity: 0.023980824
+    //Current unit: 2.69 mA
     value_to_current: 0.00269
+    indirect_address_1:
+      addr: 168
+      len: 2
