@@ -45,7 +45,8 @@ InterfaceManager::InterfaceManager()
 	// Motor model setup
 	nhp_.param( "group/model", motor_model_, motor_model_ );
 
-	ROS_ASSERT_MSG( nhp_.hasParam("models/" + motor_model_ + "/value_to_position") &&
+	ROS_ASSERT_MSG( nhp_.hasParam("models/" + motor_model_ + "/name") &&
+					nhp_.hasParam("models/" + motor_model_ + "/value_to_position") &&
 					nhp_.hasParam("models/" + motor_model_ + "/value_to_velocity") &&
 					nhp_.hasParam("models/" + motor_model_ + "/value_to_current") &&
 					nhp_.hasParam("models/" + motor_model_ + "/indirect_address_1/addr") &&
@@ -55,6 +56,7 @@ InterfaceManager::InterfaceManager()
 					nhp_.hasParam("models/" + motor_model_ + "/current_torque_curve/cutoff"),
 					"Could not find all model parameters for '%s'", motor_model_.c_str());
 
+	nhp_.getParam("models/" + motor_model_ + "/name", motor_model_name_);
 	nhp_.getParam("models/" + motor_model_ + "/value_to_position", motor_value_to_position_);
 	nhp_.getParam("models/" + motor_model_ + "/value_to_velocity", motor_value_to_velocity_);
 	nhp_.getParam("models/" + motor_model_ + "/value_to_current", motor_value_to_current_);
@@ -64,9 +66,34 @@ InterfaceManager::InterfaceManager()
 	nhp_.getParam("models/" + motor_model_ + "/current_torque_curve/c", motor_current_torque_c_);
 	nhp_.getParam("models/" + motor_model_ + "/current_torque_curve/cutoff", motor_current_torque_cutoff_);
 
+	bool control_items_ok = true;
+	{
+		// XXX: This is a pretty bad hack for this, but is unavoidable.
+		//		We have to get the control table somehow, and all motors
+		//		must be the same, so just load in the control items
+		//		for motor #1. Really we would want a 2D motor, but that just
+		//		doesn't work if we want to use GroupSync
+		DynamixelTool dummy_tool;
+		dummy_tool.addTool( motor_model_name_.c_str(), (uint8_t)0 );
+		for ( int j = 0; j < DCI_NUM_ITEMS; j++ ) {
+			const ControlItem* ci = dummy_tool.getControlItem( DYNAMIXEL_CONTROL_ITEMS_STRING[j].c_str() );
+			if(ci != NULL) {
+				dynamixel_control_items_.push_back(*ci);
+
+				ROS_DEBUG( "Loaded ControlTableItem \"%s\": %i; %i",
+					DYNAMIXEL_CONTROL_ITEMS_STRING[j].c_str(),
+					dynamixel_control_items_[j].address,
+					dynamixel_control_items_[j].data_length );
+			} else  {
+				ROS_FATAL("Unable to load control item: %s", DYNAMIXEL_CONTROL_ITEMS_STRING[j].c_str());
+				control_items_ok = false;
+				break;
+			}
+		}
+	}
+
 	// sub_setpoints_ = nh_.subscribe<sensor_msgs::JointState>( "joint_setpoints",
 	// 10, &InterfaceManager::callback_setpoints, this );
-	pub_states_ = nh_.advertise<sensor_msgs::JointState>( "joint_states", 10 );
 
 	// Dynamixel Setup
 	portHandler_ = dynamixel::PortHandler::getPortHandler( param_port_name_.c_str() );
@@ -88,22 +115,24 @@ InterfaceManager::InterfaceManager()
 	*/
 
 	// Open port
-	if ( portHandler_->openPort() ) {
-		ROS_INFO( "Succeeded to open the port(%s)!", param_port_name_.c_str() );
+	if(control_items_ok) {
+		if ( portHandler_->openPort() ) {
+			ROS_INFO( "Succeeded to open the port(%s)!", param_port_name_.c_str() );
 
-		// Set port baudrate
-		if ( portHandler_->setBaudRate( param_port_buad_ ) ) {
-			ROS_INFO( "Succeeded to change the baudrate(%d)!",
-				portHandler_->getBaudRate() );
-			port_ok = true;
+			// Set port baudrate
+			if ( portHandler_->setBaudRate( param_port_buad_ ) ) {
+				ROS_INFO( "Succeeded to change the baudrate(%d)!",
+					portHandler_->getBaudRate() );
+				port_ok = true;
+			} else {
+				ROS_ERROR( "Failed to change the baudrate!" );
+			}
 		} else {
-			ROS_ERROR( "Failed to change the baudrate!" );
+			ROS_ERROR( "Failed to open the port!" );
 		}
-	} else {
-		ROS_ERROR( "Failed to open the port!" );
 	}
 
-	if ( port_ok ) {
+	if ( control_items_ok && port_ok ) {
 		ROS_INFO( "Scanning for motors..." );
 
 		if ( add_motors() ) {
@@ -112,6 +141,8 @@ InterfaceManager::InterfaceManager()
 			ROS_INFO( "Initializing SyncRead..." );
 			initSyncRead();
 			ROS_INFO( "SyncRead done!" );
+
+			pub_states_ = nh_.advertise<sensor_msgs::JointState>( "joint_states", 10 );
 
 			timer_ = nhp_.createTimer( ros::Duration( 1.0 / param_update_rate_ ),
 				&InterfaceManager::callback_timer, this );
@@ -233,6 +264,7 @@ bool InterfaceManager::add_motors() {
 
 	//Start looping through motors definitions
 	int i = 0;
+	bool got_control_items = false;
 	while ( nhp_.hasParam( "group/motor_" + std::to_string( i ) + "/id" ) &&
 			nhp_.hasParam( "group/motor_" + std::to_string( i ) + "/name" ) &&
 			nhp_.hasParam( "group/motor_" + std::to_string( i ) + "/ref_timeout" ) &&
@@ -249,23 +281,6 @@ bool InterfaceManager::add_motors() {
 
 		ROS_INFO( "Initializing motor #%i", i );
 		init_motor( (uint8_t)motor_id, protocol_version, motor_name );
-
-		// XXX: This is a pretty bad hack for this, but is unavoidable.
-		//		We have to build the control table somehow, and all motors
-		//		should be the same, so just load in the control items
-		//		for motor #1. Really we would want a 2D motor, but that just
-		//		doesn't work if we want to use GroupSync
-		if ( i == 0 ) {
-			for ( int j = 0; j < DCI_NUM_ITEMS; j++ ) {
-				dynamixel_control_items_.push_back(
-					*dxl_[0].getControlItem( DYNAMIXEL_CONTROL_ITEMS_STRING[j].c_str() ) );
-
-				ROS_DEBUG( "Loaded ControlTableItem \"%s\": %i; %i",
-					DYNAMIXEL_CONTROL_ITEMS_STRING[j].c_str(),
-					dynamixel_control_items_[j].address,
-					dynamixel_control_items_[j].data_length );
-			}
-		}
 
 		ROS_INFO( "Contacting motor #%i", i );
 		int64_t tmp_val;
@@ -295,8 +310,8 @@ bool InterfaceManager::add_motors() {
 		i++;
 	}
 
-	//Fail if no motors are found
-	if( i == 0 ) {
+	// Fail if no motor listing was found in the parameters
+	if( i == 0 && got_control_items ) {
 		ROS_ERROR( "No motor definitions found in group!" );
 		success = false;
 	}

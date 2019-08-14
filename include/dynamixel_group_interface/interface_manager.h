@@ -97,6 +97,7 @@ class InterfaceManager {
 
 		//Motor group settings
 		std::string motor_model_;
+		std::string motor_model_name_;
 		double motor_value_to_position_;
 		double motor_value_to_velocity_;
 		double motor_value_to_current_;

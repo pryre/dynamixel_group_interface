@@ -6,19 +6,16 @@
 # approximation (y = mx + c) of the performance graph,
 # where "cut" is the lower current cutoff
 
-
 models:
-  XM430-W350:
-    //Position unit: 0.088 Deg
-    value_to_position: 0.00153589
-    //Velocity unit: 0.229 RPM
-    value_to_velocity: 0.023980824
-    //Current unit: 2.69 mA
-    value_to_current: 0.00269
+  XM430_W350:
+    name: "XM430-W350"
+    value_to_position: 0.00153589  #Position unit: 0.088 Deg
+    value_to_velocity: 0.023980824 #Velocity unit: 0.229 RPM
+    value_to_current: 0.00269      #Current unit: 2.69 mA
     indirect_address_1:
       addr: 168
       len: 2
     current_torque_curve:
       m: 0.525
       c: -0.175
-	  cut: 0.1
+      cutoff: 0.1
